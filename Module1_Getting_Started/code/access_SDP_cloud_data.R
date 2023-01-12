@@ -148,7 +148,7 @@ gplot <- ggplot()+
 gplot
 
 ##Writes plot to disk.
-png("stream_sample_map.png",width=5,height=6,units="in",res=300)
+png("./maps/stream_sample_map.png",width=6,height=5,units="in",res=300)
 gplot
 dev.off()
 
