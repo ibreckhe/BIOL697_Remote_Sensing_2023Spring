@@ -19,7 +19,7 @@ library(lhs)
 library(pdist)
 
 ##Project directory
-proj_dir <- "~/code/SpatialDataScienceWebinars2020/"
+proj_dir <- "~/code/BIOL697_Remote_Sensing_2023Spring/"
 
 ##Sets working directory.
 setwd(proj_dir)
@@ -28,7 +28,7 @@ setwd(proj_dir)
 getGDALVersionInfo()
 
 ##Get data frome with all available SDP data products.
-sdp_prods <- read.csv("https://www.rmbl.org/wp-content/uploads/2020/06/SDP_product_table_6_8_2020.csv")
+sdp_prods <- read.csv("https://www.rmbl.org/wp-content/uploads/2021/04/SDP_product_table_4_26_2021.csv")
 View(sdp_prods)
 
 ##Creates raster objects from cloud-based datasets.
@@ -37,13 +37,13 @@ dem_path <- paste("/vsicurl/",dem_uri,sep="")
 dem <- raster(dem_path, progress='text')
 dem
 
-landcover_uri <- as.character(sdp_prods$Data.URL[sdp_prods$Product=="Basic Landcover"])
+landcover_uri <- as.character(sdp_prods$Data.URL[sdp_prods$Product=="Basic Landcover" & sdp_prods$Domain=="UER"])
 landcover_path <- paste("/vsicurl/",landcover_uri,sep="")
 landcover <- raster(landcover_path,progress='text')
 landcover
 
 ## Brings in a currently unreleased (beta) map of access time.
-access_uri <- "https://rmbl-sdp.s3.us-east-2.amazonaws.com/data_products/draft/UER_access_time_minutes_1m_v2.tif"
+access_uri <- as.character(sdp_prods$Data.URL[sdp_prods$Product=="Summer Travel Time"])
 access_path <- paste("/vsicurl/",access_uri,sep="")
 access <- raster(access_path,progress='text')
 access
@@ -141,6 +141,7 @@ stratified_plot <- gplot(gothic_stack$landcover,maxpixels=500000)+
                       scale_y_continuous("")+
                       coord_sf(expand=0, label_axes="--EN") +
                       theme_bw()                      
+stratified_plot
 
 #### Maximizing coverage of environmental gradients with latin hypercube sampling.
 library(lhs)
@@ -186,9 +187,9 @@ lhs_plot
 grid.arrange(simple_plot,stratified_plot,lhs_plot,ncol=3)
 
 ####Writes the three sampling designs to disk as geopackages.
-write_sf(simple_sample,dsn="./Webinar2_Study_Design/output/simple_samples_n100.gpkg")
-write_sf(stratified_sample,dsn="./Webinar2_Study_Design/output/stratified_samples_n100.gpkg")
-write_sf(lhs_sample,dsn="./Webinar2_Study_Design/output/lhs_samples_n100.gpkg")
+write_sf(simple_sample,dsn="./Module2_Study_Design/output/simple_samples_n100.gpkg")
+write_sf(stratified_sample,dsn="./Module2_Study_Design/output/stratified_samples_n100.gpkg")
+write_sf(lhs_sample,dsn="./Module2_Study_Design/output/lhs_samples_n100.gpkg")
 
 ####Assesses the representativeness and coverage of each design compared to the sampling frame.
 
