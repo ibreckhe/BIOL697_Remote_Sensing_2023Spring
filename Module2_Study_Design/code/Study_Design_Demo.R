@@ -8,8 +8,7 @@
 #install.packages(c("rgdal","raster","sf","ggplot2","ggspatial","rasterVis","gridExtra","lhs","pdist"))
 
 ##Sets up workspace
-library(rgdal)
-library(raster)
+library(terra)
 library(sf)
 library(ggplot2)
 library(ggspatial)
@@ -24,9 +23,6 @@ proj_dir <- "~/code/BIOL697_Remote_Sensing_2023Spring/"
 ##Sets working directory.
 setwd(proj_dir)
 
-##Check GDAL version (should work with GDAL 2.2.3 or later).
-getGDALVersionInfo()
-
 ##Get data frome with all available SDP data products.
 sdp_prods <- read.csv("https://www.rmbl.org/wp-content/uploads/2021/04/SDP_product_table_4_26_2021.csv")
 View(sdp_prods)
@@ -34,64 +30,62 @@ View(sdp_prods)
 ##Creates raster objects from cloud-based datasets.
 dem_uri <- as.character(sdp_prods$Data.URL[sdp_prods$Product=="Digital Elevation Model"])
 dem_path <- paste("/vsicurl/",dem_uri,sep="")
-dem <- raster(dem_path, progress='text')
+dem <- rast(dem_path)
 dem
 
 landcover_uri <- as.character(sdp_prods$Data.URL[sdp_prods$Product=="Basic Landcover" & sdp_prods$Domain=="UER"])
 landcover_path <- paste("/vsicurl/",landcover_uri,sep="")
-landcover <- raster(landcover_path,progress='text')
+landcover <- rast(landcover_path)
 landcover
 
 ## Brings in a currently unreleased (beta) map of access time.
 access_uri <- as.character(sdp_prods$Data.URL[sdp_prods$Product=="Summer Travel Time"])
 access_path <- paste("/vsicurl/",access_uri,sep="")
-access <- raster(access_path,progress='text')
+access <- rast(access_path)
 access
 
 ## Brings in a currently unreleased (beta) map of public lands.
 public_uri <- "https://rmbl-sdp.s3.us-east-2.amazonaws.com/data_products/draft/UER_USFS_BLM_lands_1m_v1.tif"
 public_path <- paste("/vsicurl/",public_uri,sep="")
-public <- raster(public_path,progress='text')
+public <- rast(public_path)
 public
 
 ##Combines them into a raster stack.
-study_stack <- stack(dem,landcover,access,public)
+study_stack <- c(dem,landcover,access,public)
 names(study_stack) <- c("dem","landcover","access_time","public")
 
 ##Gothic Townsite Extent
 #plot(dem,maxpixels=5000)
-#gothic_extent <- drawExtent()
-gothic_extent <- extent(matrix(c(326983,328033,
-                                 4313306,4314244),
-                               nrow=2,byrow=TRUE))
+#gothic_extent <- draw()
+gothic_extent <- ext(326983,328033,
+                    4313306,4314244)
 
 ##Subsets rasters to the area of interest.
-gothic_stack <- crop(study_stack, gothic_extent, filename=tempfile(), 
-                     progress="text")
+gothic_stack <- crop(study_stack, gothic_extent)
 
 ##Computes slope and aspect rasters.
 gothic_stack$slope <- terrain(gothic_stack$dem,
-                              opt="slope",unit="degrees")
+                              v="slope",unit="degrees")
 gothic_stack$aspect <- terrain(gothic_stack$dem,
-                               opt="aspect",unit="degrees")
+                               v="aspect",unit="degrees")
 
 ##Defines criteria for suitable sampling sites.
-lc_suitable <- calc(gothic_stack$landcover,
+lc_suitable <- app(gothic_stack$landcover,
                     fun=function(x){x==1|x==2}) #landcover code 1 is "evergreen forest", code 2 is "deciduous forest" 
-slope_suitable <- calc(gothic_stack$slope,
+slope_suitable <- app(gothic_stack$slope,
                        fun=function(x){x < 45.0}) #slopes > 45 deg. are unsafe
-public_suitable <- calc(gothic_stack$public,
+public_suitable <- app(gothic_stack$public,
                         fun=function(x){x==1}) #most private lands off-limits
-access_suitable <- calc(gothic_stack$access_time,
+access_suitable <- app(gothic_stack$access_time,
                         fun=function(x){x < 30}) #more than 30 minutes to access impractical
-gothic_stack$suitable <- lc_suitable * slope_suitable * public_suitable
+gothic_stack$suitable <- lc_suitable * slope_suitable * public_suitable * access_suitable
 plot(gothic_stack$suitable)
 
 ##Takes a large random sample of pixels for reference.
 set.seed(42)
-reference_sample <- sampleRandom(gothic_stack,size=100000,xy=TRUE,sp=TRUE)
-reference_sample@data$suitable <- as.factor(reference_sample@data$suitable)
-summary(reference_sample@data$suitable)
+reference_sample <- spatSample(gothic_stack,size=100000,method="random",xy=TRUE,as.points=TRUE,na.rm=TRUE)
+reference_sample$suitable <- as.factor(reference_sample$suitable)
+summary(reference_sample$suitable)
 
 ##Converts spatial data to sf format.
 reference_sf <- st_as_sf(reference_sample)
