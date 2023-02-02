@@ -1,0 +1,110 @@
+var table = ee.FeatureCollection("users/ikb/UG_extent_ee");
+
+// Colorado state boundary.
+var roi = ee.FeatureCollection('FAO/GAUL/2015/level1')
+.filter('ADM1_NAME == "Colorado"').first().geometry();
+
+// A function that scales and masks Landsat 8 (C2) surface reflectance images.
+function prepSrL8(image) {
+  // Develop masks for unwanted pixels (fill, cloud, cloud shadow).
+  var qaMask = image.select('QA_PIXEL').bitwiseAnd(parseInt('11111', 2)).eq(0);
+  var saturationMask = image.select('QA_RADSAT').eq(0);
+  
+  // Apply the scaling factors to the appropriate bands.
+  var getFactorImg = function(factorNames) {
+    var factorList = image.toDictionary().select(factorNames).values();
+    return ee.Image.constant(factorList);
+  };
+  var scaleImg = getFactorImg([
+    'REFLECTANCE_MULT_BAND_.|TEMPERATURE_MULT_BAND_ST_B10']);
+  var offsetImg = getFactorImg([
+    'REFLECTANCE_ADD_BAND_.|TEMPERATURE_ADD_BAND_ST_B10']);
+  var scaled = image.select('SR_B.|ST_B10').multiply(scaleImg).add(offsetImg);
+  
+  // Replace original bands with scaled bands and apply masks.
+  return image.addBands(scaled, null, true)
+  .updateMask(qaMask).updateMask(saturationMask);
+}
+
+var addNDVI = function(image) {
+  var ndvi = image.normalizedDifference(['SR_B5', 'SR_B4']).rename('SR_NDVI').toDouble();
+  return image.addBands(ndvi);
+};
+
+var addEVI2 = function(image){
+  var nir = image.select('SR_B5')
+  var red = image.select('SR_B4')
+  evi2 = image.expression(
+    '2.5 * ((nir - red) / (1 + nir + 2.4 * red))', {
+      'nir': nir,
+      'red': red
+    });
+  // ignore anomalous evi2 values < 0 and > 1
+  var evi2_mask = evi2.lt(1).and(evi2.gt(0));
+  var evi2 = evi2.updateMask(evi2_mask).rename('SR_EVI2').toDouble();
+  return image.addBands(evi2)
+}
+
+
+var col_summer = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+.filterBounds(AOI)
+.filter(ee.Filter.calendarRange(6, 8, 'month'))
+.filter(ee.Filter.calendarRange(2021,2021,'year'))
+.map(prepSrL8)
+.map(addEVI2)
+.reduce(ee.Reducer.percentile([50]));
+
+var col_summer_evi2 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+.filterBounds(AOI)
+.filter(ee.Filter.calendarRange(6, 8, 'month'))
+.filter(ee.Filter.calendarRange(2021,2021,'year'))
+.map(prepSrL8)
+.map(addEVI2)
+.select('SR_EVI2')
+.reduce(ee.Reducer.percentile([95]));
+
+
+// Display the cloud-free median composite.
+var visParams = {
+  bands: ['SR_B6_p50', 'SR_B5_p50', 'SR_B3_p50'],
+  min: 0,
+  max: 0.4
+};
+
+var ndviParams = {
+  bands: ['SR_NDVI_p95'],
+  min: 0,
+  max: 1.0
+};
+
+var evi2Params_95 = {
+  bands: ['SR_EVI2_p95'],
+  min: 0.2,
+  max: 0.8
+};
+
+// visualize
+Map.centerObject(AOI, 9);
+Map.addLayer(col_summer.clip(AOI), visParams, 'Cloud-free mosaic June');
+Map.addLayer(col_summer_evi2.clip(AOI), evi2Params_95, 'EVI2 mosaic - June');
+
+//Exports to Drive for further analysis.
+Export.image.toDrive({
+  image: col_summer,
+  description: 'Reflectance_summer_p50',
+  folder: 'Bayesian_LSP',
+  region: AOI,
+  scale: 30,
+  crs: 'EPSG:32613',
+  maxPixels: 200000000
+});
+
+Export.image.toDrive({
+  image: col_summer_evi2,
+  description: 'EVI2_summer_p95',
+  folder: 'Bayesian_LSP',
+  region: AOI,
+  scale: 30,
+  crs: 'EPSG:32613',
+  maxPixels: 200000000
+});
