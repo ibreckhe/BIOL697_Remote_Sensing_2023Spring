@@ -146,4 +146,3 @@ print(paste("Processing time", end_time - start_time, "seconds"))
 ##By default, the tiles are merged into a single virtual raster.
 dem
 plot(dem)
-
